@@ -402,6 +402,7 @@ func init() {
 	flag.Var(&logging.stderrThreshold, "stderrthreshold", "logs at or above this threshold go to stderr")
 	flag.Var(&logging.vmodule, "vmodule", "comma-separated list of pattern=N settings for file-filtered logging")
 	flag.Var(&logging.traceLocation, "log_backtrace_at", "when logging hits line file:N, emit a stack trace")
+	flag.IntVar(&logging.flushInterval, "flushInterval", 1, "h Intervalog level for V logs")
 
 	// Default stderrThreshold is ERROR.
 	logging.stderrThreshold = errorLog
@@ -451,8 +452,9 @@ type loggingT struct {
 	traceLocation traceLocation
 	// These flags are modified only under lock, although verbosity may be fetched
 	// safely using atomic.LoadInt32.
-	vmodule   moduleSpec // The state of the -vmodule flag.
-	verbosity Level      // V logging level, the value of the -v flag/
+	vmodule       moduleSpec // The state of the -vmodule flag.
+	verbosity     Level      // V logging level, the value of the -v flag/
+	flushInterval int
 }
 
 // buffer holds a byte Buffer for reuse. The zero value is ready for use.
@@ -875,10 +877,11 @@ func (l *loggingT) createFiles(sev severity) error {
 	return nil
 }
 
-const flushInterval = 30 * time.Second
+// const flushInterval = 30 * time.Second
 
 // flushDaemon periodically flushes the log file buffers.
 func (l *loggingT) flushDaemon() {
+	flushInterval := time.Duration(l.flushInterval) * time.Second
 	for _ = range time.NewTicker(flushInterval).C {
 		l.lockAndFlushAll()
 	}
