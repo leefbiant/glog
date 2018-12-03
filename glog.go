@@ -403,7 +403,11 @@ func init() {
 	flag.Var(&logging.vmodule, "vmodule", "comma-separated list of pattern=N settings for file-filtered logging")
 	flag.Var(&logging.traceLocation, "log_backtrace_at", "when logging hits line file:N, emit a stack trace")
 	flag.IntVar(&logging.flushInterval, "flushInterval", 1, "h Intervalog level for V logs")
+	flag.Uint64Var(&logging.max_log_size, "max_log_size", 1, "max log size")
 
+	if logging.max_log_size <= 0 {
+		logging.max_log_size = 100
+	}
 	// Default stderrThreshold is ERROR.
 	logging.stderrThreshold = errorLog
 
@@ -455,6 +459,7 @@ type loggingT struct {
 	vmodule       moduleSpec // The state of the -vmodule flag.
 	verbosity     Level      // V logging level, the value of the -v flag/
 	flushInterval int
+	max_log_size  uint64
 }
 
 // buffer holds a byte Buffer for reuse. The zero value is ready for use.
@@ -814,7 +819,7 @@ func (sb *syncBuffer) Sync() error {
 }
 
 func (sb *syncBuffer) Write(p []byte) (n int, err error) {
-	if sb.nbytes+uint64(len(p)) >= MaxSize {
+	if sb.nbytes+uint64(len(p)) >= sb.logger.max_log_size*1024*1024 {
 		if err := sb.rotateFile(time.Now()); err != nil {
 			sb.logger.exit(err)
 		}
