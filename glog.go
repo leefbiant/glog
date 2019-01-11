@@ -79,6 +79,7 @@ import (
 	"io"
 	stdLog "log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -405,6 +406,7 @@ func init() {
 	flag.IntVar(&logging.flushInterval, "flushInterval", 1, "h Intervalog level for V logs")
 	flag.Uint64Var(&logging.max_log_size, "max_log_size", 1, "max log size")
 	flag.StringVar(&logging.file_name_layout, "file_name_layout", "", "file name layout")
+	flag.BoolVar(&logging.day_delivery, "day_delivery", false, "create new file to everyday")
 
 	if logging.max_log_size <= 0 {
 		logging.max_log_size = 100
@@ -462,6 +464,7 @@ type loggingT struct {
 	flushInterval    int
 	max_log_size     uint64
 	file_name_layout string // log file name layout, the value of the -fnl "program.host.username.level.Y.M.D.h.m.s.pid"
+	day_delivery     bool   // every day to delivery, create new file to everyday. default false
 }
 
 // buffer holds a byte Buffer for reuse. The zero value is ready for use.
@@ -815,6 +818,8 @@ type syncBuffer struct {
 	sev            severity
 	nbytes         uint64 // The number of bytes written to this file
 	fileNamelayout []string
+	currDaily      string
+	dayDelivery    bool
 }
 
 func (sb *syncBuffer) Sync() error {
@@ -822,8 +827,12 @@ func (sb *syncBuffer) Sync() error {
 }
 
 func (sb *syncBuffer) Write(p []byte) (n int, err error) {
-	if sb.nbytes+uint64(len(p)) >= sb.logger.max_log_size*1024*1024 {
-		if err := sb.rotateFile(time.Now()); err != nil {
+	if sb.checkDaily() {
+		if err := sb.rotateFile(time.Now(), false); err != nil {
+			sb.logger.exit(err)
+		}
+	} else if sb.nbytes+uint64(len(p)) >= sb.logger.max_log_size*1024*1024 {
+		if err := sb.rotateFile(time.Now(), true); err != nil {
 			sb.logger.exit(err)
 		}
 	}
@@ -836,8 +845,11 @@ func (sb *syncBuffer) Write(p []byte) (n int, err error) {
 }
 
 // rotateFile closes the syncBuffer's file and starts a new one.
-func (sb *syncBuffer) rotateFile(now time.Time) error {
+func (sb *syncBuffer) rotateFile(now time.Time, incr bool) error {
 	if sb.file != nil {
+		if incr == true {
+			sb.renameFile()
+		}
 		sb.Flush()
 		sb.file.Close()
 	}
@@ -861,6 +873,59 @@ func (sb *syncBuffer) rotateFile(now time.Time) error {
 	return err
 }
 
+func (sb *syncBuffer) renameFile() {
+	currPath, err := sb.currPath()
+	if err != nil {
+		sb.logger.exit(err)
+		return
+	}
+	currFileName := fmt.Sprintf("%s%s", currPath, sb.file.Name())
+	i := 1
+	for {
+		newFileName := fmt.Sprintf("%s.%d", currFileName, i)
+		_, err := os.Stat(newFileName)
+		if err != nil && os.IsNotExist(err) {
+			if renErr := os.Rename(currFileName, newFileName); renErr != nil {
+				sb.logger.exit(renErr)
+			}
+			break
+		}
+		i++
+		if i > 1000 {
+			sb.logger.exit(errors.New("log file to much"))
+			break
+		}
+	}
+}
+
+func (sb *syncBuffer) currPath() (string, error) {
+	file, err := exec.LookPath(os.Args[0])
+	if err != nil {
+		return "", err
+	}
+	path, err := filepath.Abs(file)
+	if err != nil {
+		return "", err
+	}
+	i := strings.LastIndex(path, "/")
+	if i < 0 {
+		i = strings.LastIndex(path, "\\")
+	}
+	if i < 0 {
+		return "", errors.New(`error: Can't find "/" or "\".`)
+	}
+	return string(path[0 : i+1]), nil
+}
+
+func (sb *syncBuffer) checkDaily() bool {
+	dayTime := time.Now().Format("20060102")
+	if sb.currDaily != dayTime {
+		sb.currDaily = dayTime
+		return true
+	}
+	return false
+}
+
 // bufferSize sizes the buffer associated with each log file. It's large
 // so that log records can accumulate without the logging thread blocking
 // on disk I/O. The flushDaemon will block instead.
@@ -881,8 +946,10 @@ func (l *loggingT) createFiles(sev severity) error {
 			logger:         l,
 			sev:            s,
 			fileNamelayout: fileNameLayout,
+			currDaily:      time.Now().Format("20060102"),
+			dayDelivery:    l.day_delivery,
 		}
-		if err := sb.rotateFile(now); err != nil {
+		if err := sb.rotateFile(now, false); err != nil {
 			return err
 		}
 		l.file[s] = sb
