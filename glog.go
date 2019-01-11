@@ -404,6 +404,7 @@ func init() {
 	flag.Var(&logging.traceLocation, "log_backtrace_at", "when logging hits line file:N, emit a stack trace")
 	flag.IntVar(&logging.flushInterval, "flushInterval", 1, "h Intervalog level for V logs")
 	flag.Uint64Var(&logging.max_log_size, "max_log_size", 1, "max log size")
+	flag.StringVar(&logging.file_name_layout, "file_name_layout", "", "file name layout")
 
 	if logging.max_log_size <= 0 {
 		logging.max_log_size = 100
@@ -456,10 +457,11 @@ type loggingT struct {
 	traceLocation traceLocation
 	// These flags are modified only under lock, although verbosity may be fetched
 	// safely using atomic.LoadInt32.
-	vmodule       moduleSpec // The state of the -vmodule flag.
-	verbosity     Level      // V logging level, the value of the -v flag/
-	flushInterval int
-	max_log_size  uint64
+	vmodule          moduleSpec // The state of the -vmodule flag.
+	verbosity        Level      // V logging level, the value of the -v flag/
+	flushInterval    int
+	max_log_size     uint64
+	file_name_layout string // log file name layout, the value of the -fnl "program.host.username.level.Y.M.D.h.m.s.pid"
 }
 
 // buffer holds a byte Buffer for reuse. The zero value is ready for use.
@@ -809,9 +811,10 @@ func (l *loggingT) exit(err error) {
 type syncBuffer struct {
 	logger *loggingT
 	*bufio.Writer
-	file   *os.File
-	sev    severity
-	nbytes uint64 // The number of bytes written to this file
+	file           *os.File
+	sev            severity
+	nbytes         uint64 // The number of bytes written to this file
+	fileNamelayout []string
 }
 
 func (sb *syncBuffer) Sync() error {
@@ -839,7 +842,7 @@ func (sb *syncBuffer) rotateFile(now time.Time) error {
 		sb.file.Close()
 	}
 	var err error
-	sb.file, _, err = create(severityName[sb.sev], now)
+	sb.file, _, err = create(sb.fileNamelayout, severityName[sb.sev], now)
 	sb.nbytes = 0
 	if err != nil {
 		return err
@@ -869,10 +872,15 @@ func (l *loggingT) createFiles(sev severity) error {
 	now := time.Now()
 	// Files are created in decreasing severity order, so as soon as we find one
 	// has already been created, we can stop.
+	fileNameLayout := make([]string, 0, 0)
+	if l.file_name_layout != "" {
+		fileNameLayout = strings.Split(l.file_name_layout, ".")
+	}
 	for s := sev; s >= infoLog && l.file[s] == nil; s-- {
 		sb := &syncBuffer{
-			logger: l,
-			sev:    s,
+			logger:         l,
+			sev:            s,
+			fileNamelayout: fileNameLayout,
 		}
 		if err := sb.rotateFile(now); err != nil {
 			return err
