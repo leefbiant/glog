@@ -74,7 +74,6 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	stdLog "log"
@@ -397,30 +396,126 @@ type flushSyncWriter interface {
 }
 
 func init() {
-	flag.BoolVar(&logging.toStderr, "logtostderr", false, "log to standard error instead of files")
-	flag.BoolVar(&logging.alsoToStderr, "alsologtostderr", false, "log to standard error as well as files")
-	flag.Var(&logging.verbosity, "v", "log level for V logs")
-	flag.Var(&logging.stderrThreshold, "stderrthreshold", "logs at or above this threshold go to stderr")
-	flag.Var(&logging.vmodule, "vmodule", "comma-separated list of pattern=N settings for file-filtered logging")
-	flag.Var(&logging.traceLocation, "log_backtrace_at", "when logging hits line file:N, emit a stack trace")
-	flag.IntVar(&logging.flushInterval, "flushInterval", 1, "h Intervalog level for V logs")
-	flag.Uint64Var(&logging.max_log_size, "max_log_size", 1, "max log size")
-	flag.StringVar(&logging.file_name_layout, "file_name_layout", "", "file name layout")
-	flag.BoolVar(&logging.day_delivery, "day_delivery", false, "create new file to everyday")
+	//flag.BoolVar(&logging.toStderr, "logtostderr", false, "log to standard error instead of files")
+	//flag.BoolVar(&logging.alsoToStderr, "alsologtostderr", false, "log to standard error as well as files")
+	//flag.Var(&logging.verbosity, "v", "log level for V logs")
+	//flag.Var(&logging.stderrThreshold, "stderrthreshold", "logs at or above this threshold go to stderr")
+	//flag.Var(&logging.vmodule, "vmodule", "comma-separated list of pattern=N settings for file-filtered logging")
+	//flag.Var(&logging.traceLocation, "log_backtrace_at", "when logging hits line file:N, emit a stack trace")
+	//flag.IntVar(&logging.flushInterval, "flushInterval", 1, "h Intervalog level for V logs")
+	//flag.Uint64Var(&logging.max_log_size, "max_log_size", 1, "max log size")
+	//flag.StringVar(&logging.file_name_layout, "file_name_layout", "", "file name layout")
+	//flag.BoolVar(&logging.day_delivery, "day_delivery", false, "create new file to everyday")
 
-	if logging.max_log_size <= 0 {
-		logging.max_log_size = 100
-	}
-	// Default stderrThreshold is ERROR.
-	logging.stderrThreshold = errorLog
-
-	logging.setVState(0, nil, false)
-	go logging.flushDaemon()
+	//if logging.max_log_size <= 0 {
+	//	logging.max_log_size = 100
+	//}
+	//// Default stderrThreshold is ERROR.
+	//logging.stderrThreshold = errorLog
+	//
+	//logging.setVState(0, nil, false)
+	//logging.flushInterval = 1
+	//go logging.flushDaemon()
 }
 
 // Flush flushes all pending log I/O.
 func Flush() {
 	logging.lockAndFlushAll()
+}
+
+func Instance() *loggingTConf {
+	return &loggingTConf{
+		logIns: &logging,
+	}
+}
+
+type loggingTConf struct {
+	logIns *loggingT
+}
+
+func (ltf *loggingTConf) Start() {
+	if ltf.logIns.max_log_size <= 0 {
+		ltf.logIns.max_log_size = 100
+	}
+	// Default stderrThreshold is ERROR.
+	if int32(ltf.logIns.stderrThreshold) < 0 {
+		ltf.logIns.stderrThreshold = errorLog
+	}
+
+	ltf.logIns.setVState(0, nil, false)
+	if ltf.logIns.flushInterval == 0 {
+		ltf.logIns.flushInterval = 1
+	}
+	logging = *ltf.logIns
+	fmt.Println(fmt.Sprintf("%+v", logging))
+	go logging.flushDaemon()
+}
+
+// log to standard error instead of files
+func (ltf *loggingTConf) ToStderr(to bool) *loggingTConf {
+	ltf.logIns.toStderr = to
+	return ltf
+}
+
+// log to standard error as well as files
+func (ltf *loggingTConf) AlsoToStderr(to bool) *loggingTConf {
+	ltf.logIns.alsoToStderr = to
+	return ltf
+}
+
+// log level for V logs
+func (ltf *loggingTConf) Verbosity(level int) *loggingTConf {
+	lv := Level(level)
+	if err := lv.Set(strconv.Itoa(level)); err != nil {
+		panic(err)
+	}
+	ltf.logIns.verbosity = lv
+	return ltf
+}
+
+// logs at or above this threshold go to stderr
+func (ltf *loggingTConf) StderrThreshold(level int) *loggingTConf {
+	ltf.logIns.stderrThreshold = severity(level)
+	return ltf
+}
+
+// when logging hits line file:N, emit a stack trace
+func (ltf *loggingTConf) LogBacktraceAt(traces string) *loggingTConf {
+	trace := traceLocation{}
+	if err := trace.Set(traces); err != nil {
+		panic(err)
+	}
+	ltf.logIns.traceLocation = trace
+	return ltf
+}
+
+// h Intervalog level for V logs
+func (ltf *loggingTConf) flushInterval(cap int) *loggingTConf {
+	ltf.logIns.flushInterval = cap
+	return ltf
+}
+
+// max log size
+func (ltf *loggingTConf) MaxLogSize(size uint64) *loggingTConf {
+	ltf.logIns.max_log_size = size
+	return ltf
+}
+
+// file name layout
+func (ltf *loggingTConf) FileNameLayout(fileName string) *loggingTConf {
+	ltf.logIns.file_name_layout = fileName
+	return ltf
+}
+
+// create new file to everyday
+func (ltf *loggingTConf) DayDelivery(enable bool) *loggingTConf {
+	ltf.logIns.day_delivery = enable
+	return ltf
+}
+
+func (ltf *loggingTConf) LogDir(path string) *loggingTConf {
+	logDir = path
+	return ltf
 }
 
 // loggingT collects all the global state of the logging setup.
@@ -688,10 +783,11 @@ func (l *loggingT) output(s severity, buf *buffer, file string, line int, alsoTo
 		}
 	}
 	data := buf.Bytes()
-	if !flag.Parsed() {
-		os.Stderr.Write([]byte("ERROR: logging before flag.Parse: "))
-		os.Stderr.Write(data)
-	} else if l.toStderr {
+	//if !flag.Parsed() {
+	//	os.Stderr.Write([]byte("ERROR: logging before flag.Parse: "))
+	//	os.Stderr.Write(data)
+	//} else
+	if l.toStderr {
 		os.Stderr.Write(data)
 	} else {
 		if alsoToStderr || l.alsoToStderr || s >= l.stderrThreshold.get() {
