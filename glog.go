@@ -514,10 +514,10 @@ func (ltf *loggingTConf) DayDelivery(enable bool) *loggingTConf {
 	return ltf
 }
 
-func (ltf *loggingTConf) LogDir(path string) *loggingTConf {
-	logDir = path
-	return ltf
-}
+//func (ltf *loggingTConf) LogDir(path string) *loggingTConf {
+//	logDir = path
+//	return ltf
+//}
 
 // loggingT collects all the global state of the logging setup.
 type loggingT struct {
