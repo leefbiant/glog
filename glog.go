@@ -74,6 +74,7 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	stdLog "log"
@@ -396,26 +397,26 @@ type flushSyncWriter interface {
 }
 
 func init() {
-	//flag.BoolVar(&logging.toStderr, "logtostderr", false, "log to standard error instead of files")
-	//flag.BoolVar(&logging.alsoToStderr, "alsologtostderr", false, "log to standard error as well as files")
-	//flag.Var(&logging.verbosity, "v", "log level for V logs")
-	//flag.Var(&logging.stderrThreshold, "stderrthreshold", "logs at or above this threshold go to stderr")
-	//flag.Var(&logging.vmodule, "vmodule", "comma-separated list of pattern=N settings for file-filtered logging")
-	//flag.Var(&logging.traceLocation, "log_backtrace_at", "when logging hits line file:N, emit a stack trace")
-	//flag.IntVar(&logging.flushInterval, "flushInterval", 1, "h Intervalog level for V logs")
-	//flag.Uint64Var(&logging.max_log_size, "max_log_size", 1, "max log size")
-	//flag.StringVar(&logging.file_name_layout, "file_name_layout", "", "file name layout")
-	//flag.BoolVar(&logging.day_delivery, "day_delivery", false, "create new file to everyday")
+	flag.BoolVar(&logging.toStderr, "logtostderr", false, "log to standard error instead of files")
+	flag.BoolVar(&logging.alsoToStderr, "alsologtostderr", false, "log to standard error as well as files")
+	flag.Var(&logging.verbosity, "v", "log level for V logs")
+	flag.Var(&logging.stderrThreshold, "stderrthreshold", "logs at or above this threshold go to stderr")
+	flag.Var(&logging.vmodule, "vmodule", "comma-separated list of pattern=N settings for file-filtered logging")
+	flag.Var(&logging.traceLocation, "log_backtrace_at", "when logging hits line file:N, emit a stack trace")
+	flag.IntVar(&logging.flushInterval, "flushInterval", 1, "h Intervalog level for V logs")
+	flag.Uint64Var(&logging.max_log_size, "max_log_size", 1, "max log size")
+	flag.StringVar(&logging.file_name_layout, "file_name_layout", "", "file name layout")
+	flag.BoolVar(&logging.day_delivery, "day_delivery", false, "create new file to everyday")
 
-	//if logging.max_log_size <= 0 {
-	//	logging.max_log_size = 100
-	//}
-	//// Default stderrThreshold is ERROR.
-	//logging.stderrThreshold = errorLog
-	//
-	//logging.setVState(0, nil, false)
-	//logging.flushInterval = 1
-	//go logging.flushDaemon()
+	if logging.max_log_size <= 0 {
+		logging.max_log_size = 100
+	}
+	// Default stderrThreshold is ERROR.
+	logging.stderrThreshold = errorLog
+
+	logging.setVState(0, nil, false)
+	logging.flushInterval = 1
+	go logging.flushDaemon()
 }
 
 // Flush flushes all pending log I/O.
